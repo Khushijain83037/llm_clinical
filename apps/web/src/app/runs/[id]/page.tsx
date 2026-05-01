@@ -1,212 +1,114 @@
 "use client";
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
-import type { RunDetail, CaseResult, FieldScores } from "@test-evals/shared";
-
-const SERVER = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:8787";
-
-function pct(n: number | null | undefined, decimals = 1) {
-  if (n == null) return "—";
-  return `${(n * 100).toFixed(decimals)}%`;
+export const dynamic = "force-dynamic";
+const SERVER = "http://70.38.97.86:8800";
+type CaseRow = { transcript_id: string; schema_valid: boolean; attempt_count: number; scores?: { overall?: number; chief_complaint?: number; vitals?: { avg?: number }; medications?: { f1?: number }; diagnoses?: { f1?: number }; plan?: { f1?: number } } | null };
+type RunData = { id: string; strategy: string; status: string; prompt_hash: string; completed_cases: number; total_cases: number; cost_usd?: number; tokens?: { cost_usd?: number; cache_read?: number }; wall_ms: number; aggregate_scores?: { overall?: number; chief_complaint?: number; vitals?: { avg?: number }; medications?: { f1?: number; precision?: number; recall?: number }; diagnoses?: { f1?: number; precision?: number; recall?: number }; plan?: { f1?: number; precision?: number; recall?: number }; follow_up_interval?: number; follow_up_reason?: number } | null; cases?: CaseRow[] };
+const COLORS: Record<string,string> = { zero_shot:"#3b82f6", few_shot:"#8b5cf6", cot:"#06b6d4" };
+function pct(n: number|null|undefined) { if(n==null)return"—"; return`${(n*100).toFixed(1)}%`; }
+function sc(n: number|null|undefined): string { if(n==null)return"#475569"; if(n>=0.8)return"#22c55e"; if(n>=0.6)return"#f59e0b"; if(n>=0.4)return"#f97316"; return"#ef4444"; }
+function Bar({value}:{value:number|null|undefined}) {
+  if(value==null)return<span style={{color:"#334155"}}>—</span>;
+  const c=sc(value);
+  return <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:40,height:3,background:"#1e293b",borderRadius:2}}><div style={{width:`${Math.round(value*100)}%`,height:"100%",background:c,borderRadius:2}}/></div><span style={{color:c,fontFamily:"monospace",fontSize:12,fontWeight:600,minWidth:42}}>{pct(value)}</span></div>;
 }
-
-function scoreColor(n: number | null | undefined) {
-  if (n == null) return "text-gray-400";
-  if (n >= 0.8) return "text-green-700";
-  if (n >= 0.5) return "text-yellow-600";
-  return "text-red-600";
-}
-
-function CacheBar({ cacheRead, total }: { cacheRead: number; total: number }) {
-  if (!total) return null;
-  const pct = total > 0 ? (cacheRead / total) * 100 : 0;
-  return (
-    <div className="flex items-center gap-2 text-xs text-gray-500">
-      <span>Cache hit rate: {pct.toFixed(0)}%</span>
-      <div className="w-32 bg-gray-200 rounded h-1.5">
-        <div className="bg-green-500 h-1.5 rounded" style={{ width: `${pct}%` }} />
+export default function RunDetailPage({params}:{params:Promise<{id:string}>}) {
+  const {id}=use(params);
+  const [run,setRun]=useState<RunData|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState<string|null>(null);
+  const [sel,setSel]=useState<string|null>(null);
+  const [gold,setGold]=useState("");
+  const [pred,setPred]=useState("");
+  useEffect(()=>{
+    fetch(`${SERVER}/api/v1/runs/${id}`).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}).then((d:RunData)=>setRun({...d,cases:(d.cases??[]).map(c=>({transcript_id:c.transcript_id,schema_valid:c.schema_valid,attempt_count:c.attempt_count,scores:c.scores}))})).catch((e:Error)=>setError(e.message)).finally(()=>setLoading(false));
+  },[id]);
+  useEffect(()=>{
+    if(!sel)return;
+    fetch(`${SERVER}/api/v1/runs/${id}/cases/${sel}`).then(r=>r.json()).then((d:{gold?:unknown;prediction?:unknown})=>{setGold(JSON.stringify(d.gold,null,2));setPred(JSON.stringify(d.prediction,null,2));}).catch(console.error);
+  },[sel,id]);
+  if(loading)return<div style={{minHeight:"100vh",background:"#020817",display:"flex",alignItems:"center",justifyContent:"center",color:"#475569",fontFamily:"monospace",letterSpacing:2,fontSize:12}}>LOADING...</div>;
+  if(error)return<div style={{minHeight:"100vh",background:"#020817",display:"flex",alignItems:"center",justifyContent:"center",color:"#ef4444",fontFamily:"monospace"}}>{error}</div>;
+  if(!run)return null;
+  const cases=[...(run.cases??[])].sort((a,b)=>a.transcript_id.localeCompare(b.transcript_id));
+  const color=COLORS[run.strategy]??"#64748b";
+  const cost=run.tokens?.cost_usd??run.cost_usd??0;
+  const agg=run.aggregate_scores;
+  const fieldRows=[{label:"Chief Complaint",v:agg?.chief_complaint},{label:"Vitals avg",v:agg?.vitals?.avg},{label:"Medications F1",v:agg?.medications?.f1,p:agg?.medications?.precision,r:agg?.medications?.recall},{label:"Diagnoses F1",v:agg?.diagnoses?.f1,p:agg?.diagnoses?.precision,r:agg?.diagnoses?.recall},{label:"Plan F1",v:agg?.plan?.f1,p:agg?.plan?.precision,r:agg?.plan?.recall},{label:"Follow-up Days",v:agg?.follow_up_interval},{label:"Follow-up Reason",v:agg?.follow_up_reason}];
+  return(
+    <div style={{minHeight:"100vh",background:"#020817",color:"#e2e8f0",fontFamily:"'DM Mono','Fira Code',monospace"}}>
+      <div style={{borderBottom:"1px solid #0f172a",padding:"16px 32px",display:"flex",alignItems:"center",gap:12}}>
+        <Link href="/runs" style={{color:"#475569",textDecoration:"none",fontSize:11,letterSpacing:1}}>← RUNS</Link>
+        <span style={{color:"#1e293b"}}>/</span>
+        <span style={{fontSize:11,letterSpacing:2,color,textTransform:"uppercase",fontWeight:700,background:color+"15",padding:"3px 10px",borderRadius:4,border:`1px solid ${color}30`}}>{run.strategy.replace("_"," ")}</span>
+        <span style={{fontFamily:"monospace",fontSize:10,color:"#1e3a5f",background:"#0f172a",padding:"3px 8px",borderRadius:4}}>{run.prompt_hash}</span>
+        <span style={{fontSize:10,fontWeight:700,letterSpacing:1,padding:"2px 8px",borderRadius:4,background:run.status==="completed"?"#22c55e15":"#3b82f615",color:run.status==="completed"?"#22c55e":"#3b82f6",border:`1px solid ${run.status==="completed"?"#22c55e30":"#3b82f630"}`}}>{run.status.toUpperCase()}</span>
+        <span style={{marginLeft:"auto",fontSize:11,color:"#334155"}}>{run.completed_cases}/{run.total_cases} cases · {(run.wall_ms/1000).toFixed(1)}s · ${cost.toFixed(4)}</span>
       </div>
-    </div>
-  );
-}
-
-export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const [run, setRun] = useState<RunDetail | null>(null);
-  const [liveProgress, setLiveProgress] = useState<{ completed: number; total: number } | null>(null);
-  const [selectedCase, setSelectedCase] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.runs.get(id).then(setRun);
-
-    const es = new EventSource(`${SERVER}/api/v1/runs/${id}/stream`);
-    es.onmessage = (e) => {
-      const ev = JSON.parse(e.data);
-      if (ev.type === "progress") {
-        setLiveProgress({ completed: ev.completed, total: ev.total });
-        if (ev.case_result) {
-          setRun((prev) => {
-            if (!prev) return prev;
-            const cases = [...(prev.cases ?? []).filter((c: CaseResult) => c.transcript_id !== ev.case_result.transcript_id), ev.case_result];
-            return { ...prev, cases, completed_cases: ev.completed };
-          });
-        }
-      }
-      if (ev.type === "complete") {
-        api.runs.get(id).then(setRun);
-        es.close();
-      }
-    };
-    es.onerror = () => es.close();
-    return () => es.close();
-  }, [id]);
-
-  if (!run) return <div className="p-6">Loading…</div>;
-
-  const cases: CaseResult[] = (run.cases ?? []).sort((a: CaseResult, b: CaseResult) =>
-    a.transcript_id.localeCompare(b.transcript_id)
-  );
-
-  const totalTokens = (run.tokens.input + run.tokens.cache_read + run.tokens.cache_write);
-
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-3 mb-4">
-        <Link href="/runs" className="text-blue-600 hover:underline text-sm">← Runs</Link>
-        <h1 className="text-xl font-bold">{run.strategy}</h1>
-        <span className="font-mono text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{run.prompt_hash}</span>
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${run.status === "completed" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
-          {run.status}
-        </span>
-      </div>
-
-      {/* Stats bar */}
-      <div className="grid grid-cols-6 gap-3 mb-6 text-sm">
-        {[
-          ["Overall F1", pct(run.aggregate_scores?.overall)],
-          ["Medications F1", pct(run.aggregate_scores?.medications.f1)],
-          ["Diagnoses F1", pct(run.aggregate_scores?.diagnoses.f1)],
-          ["Plan F1", pct(run.aggregate_scores?.plan.f1)],
-          ["Cost", `$${run.tokens.cost_usd.toFixed(4)}`],
-          ["Cache reads", run.tokens.cache_read.toLocaleString()],
-        ].map(([label, val]) => (
-          <div key={label} className="bg-gray-50 rounded p-3 text-center">
-            <div className="text-gray-500 text-xs">{label}</div>
-            <div className="font-bold text-lg mt-0.5">{val}</div>
+      <div style={{padding:"24px 32px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:16,marginBottom:20}}>
+          <div style={{background:"#0f172a",border:`1px solid ${color}30`,borderRadius:8,padding:24,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+            <div style={{fontSize:10,letterSpacing:3,color:"#475569",marginBottom:8}}>OVERALL F1</div>
+            <div style={{fontSize:52,fontWeight:700,color,letterSpacing:-2,lineHeight:1}}>{agg?.overall!=null?`${(agg.overall*100).toFixed(1)}`:"—"}</div>
+            {agg?.overall!=null&&<div style={{fontSize:16,color:"#475569",marginTop:2}}>%</div>}
+            <div style={{width:"100%",height:4,background:"#1e293b",borderRadius:2,marginTop:16}}><div style={{width:`${(agg?.overall??0)*100}%`,height:"100%",background:color,borderRadius:2}}/></div>
           </div>
-        ))}
-      </div>
-
-      <CacheBar cacheRead={run.tokens.cache_read} total={totalTokens} />
-
-      {liveProgress && run.status === "running" && (
-        <div className="mt-3 text-sm text-blue-600">
-          ⏳ {liveProgress.completed} / {liveProgress.total} cases completed…
-        </div>
-      )}
-
-      {/* Cases table */}
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="border-b text-left text-gray-500">
-              <th className="py-2 pr-3">Case</th>
-              <th className="py-2 pr-3">Overall</th>
-              <th className="py-2 pr-3">Complaint</th>
-              <th className="py-2 pr-3">Vitals</th>
-              <th className="py-2 pr-3">Meds F1</th>
-              <th className="py-2 pr-3">Dx F1</th>
-              <th className="py-2 pr-3">Plan F1</th>
-              <th className="py-2 pr-3">Attempts</th>
-              <th className="py-2 pr-3">Valid</th>
-              <th className="py-2 pr-3">Halluc.</th>
-              <th className="py-2 pr-3">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cases.map((c: CaseResult) => {
-              const s = c.scores;
-              const ungrounded = c.hallucinations?.filter((h) => !h.grounded).length ?? 0;
-              return (
-                <tr
-                  key={c.transcript_id}
-                  className={`border-b cursor-pointer ${selectedCase === c.transcript_id ? "bg-blue-50" : "hover:bg-gray-50"}`}
-                  onClick={() => setSelectedCase(selectedCase === c.transcript_id ? null : c.transcript_id)}
-                >
-                  <td className="py-1.5 pr-3 font-mono">{c.transcript_id}</td>
-                  <td className={`py-1.5 pr-3 font-mono font-bold ${scoreColor(s?.overall)}`}>{pct(s?.overall)}</td>
-                  <td className={`py-1.5 pr-3 font-mono ${scoreColor(s?.chief_complaint)}`}>{pct(s?.chief_complaint)}</td>
-                  <td className={`py-1.5 pr-3 font-mono ${scoreColor(s?.vitals.avg)}`}>{pct(s?.vitals.avg)}</td>
-                  <td className={`py-1.5 pr-3 font-mono ${scoreColor(s?.medications.f1)}`}>{pct(s?.medications.f1)}</td>
-                  <td className={`py-1.5 pr-3 font-mono ${scoreColor(s?.diagnoses.f1)}`}>{pct(s?.diagnoses.f1)}</td>
-                  <td className={`py-1.5 pr-3 font-mono ${scoreColor(s?.plan.f1)}`}>{pct(s?.plan.f1)}</td>
-                  <td className="py-1.5 pr-3 font-mono">{c.attempt_count}</td>
-                  <td className="py-1.5 pr-3">{c.schema_valid ? "✓" : "✗"}</td>
-                  <td className={`py-1.5 pr-3 font-mono ${ungrounded > 0 ? "text-red-600 font-bold" : "text-gray-400"}`}>{ungrounded}</td>
-                  <td className="py-1.5 pr-3 font-mono text-gray-500">${c.tokens.cost_usd.toFixed(5)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Case detail panel */}
-      {selectedCase && (
-        <CaseDetailPanel runId={id} transcriptId={selectedCase} />
-      )}
-    </div>
-  );
-}
-
-function CaseDetailPanel({ runId, transcriptId }: { runId: string; transcriptId: string }) {
-  const [data, setData] = useState<unknown>(null);
-
-  useEffect(() => {
-    api.runs.case(runId, transcriptId).then(setData);
-  }, [runId, transcriptId]);
-
-  if (!data) return <div className="mt-4 p-4 border rounded text-sm">Loading case…</div>;
-
-  const d = data as {
-    transcript: string;
-    gold: unknown;
-    prediction: unknown;
-    attempts: Array<{ attempt: number; validation_errors: string[]; success: boolean }>;
-    tokens: { cache_read: number };
-  };
-
-  return (
-    <div className="mt-4 border rounded p-4 text-xs">
-      <h3 className="font-bold text-sm mb-3">{transcriptId}</h3>
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <div className="font-semibold text-gray-500 mb-1">Transcript</div>
-          <pre className="whitespace-pre-wrap bg-gray-50 p-2 rounded text-xs overflow-auto max-h-64">{d.transcript}</pre>
-        </div>
-        <div>
-          <div className="font-semibold text-gray-500 mb-1">Gold</div>
-          <pre className="bg-green-50 p-2 rounded text-xs overflow-auto max-h-64">{JSON.stringify(d.gold, null, 2)}</pre>
-        </div>
-        <div>
-          <div className="font-semibold text-gray-500 mb-1">Prediction</div>
-          <pre className="bg-blue-50 p-2 rounded text-xs overflow-auto max-h-64">{JSON.stringify(d.prediction, null, 2)}</pre>
-        </div>
-      </div>
-      {d.attempts?.length > 1 && (
-        <div className="mt-3">
-          <div className="font-semibold text-gray-500 mb-1">Retry trace ({d.attempts.length} attempts)</div>
-          {d.attempts.map((a) => (
-            <div key={a.attempt} className={`p-2 mb-1 rounded ${a.success ? "bg-green-50" : "bg-red-50"}`}>
-              <span className="font-mono">Attempt {a.attempt}: {a.success ? "✓ success" : `✗ ${a.validation_errors.join("; ")}`}</span>
+          <div style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:8,padding:24}}>
+            <div style={{fontSize:10,letterSpacing:3,color:"#475569",marginBottom:16}}>FIELD BREAKDOWN</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px 24px"}}>
+              {fieldRows.map(row=>(
+                <div key={row.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                  <span style={{fontSize:11,color:"#64748b",whiteSpace:"nowrap"}}>{row.label}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    {"p" in row && row.p!=null&&<span style={{fontSize:10,color:"#334155"}}>P:{pct(row.p)} R:{pct(row.r)}</span>}
+                    <Bar value={row.v}/>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
-      )}
-      {d.tokens.cache_read > 0 && (
-        <div className="mt-2 text-green-600 text-xs">💾 Cache read: {d.tokens.cache_read} tokens</div>
-      )}
+        <div style={{background:"#0a0f1a",border:"1px solid #1e293b",borderRadius:8,overflow:"hidden",marginBottom:sel?2:0}}>
+          <div style={{padding:"14px 20px",borderBottom:"1px solid #1e293b",display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:10,letterSpacing:2,color:"#475569",fontWeight:600}}>CASE RESULTS</span>
+            <span style={{fontSize:10,color:"#334155"}}>{cases.length} cases · click to inspect gold vs prediction</span>
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr style={{borderBottom:"1px solid #1e293b"}}>{["CASE","OVERALL","CHIEF CC","VITALS","MEDS","DX","PLAN","✓"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:10,letterSpacing:1,color:"#334155",fontWeight:600}}>{h}</th>)}</tr></thead>
+              <tbody>
+                {cases.map((c,i)=>{
+                  const s=c.scores; const isSel=sel===c.transcript_id;
+                  return<tr key={c.transcript_id} onClick={()=>setSel(isSel?null:c.transcript_id)} style={{borderBottom:"1px solid #0f172a",background:isSel?color+"10":i%2===0?"transparent":"#0f172a30",cursor:"pointer",borderLeft:isSel?`3px solid ${color}`:"3px solid transparent",transition:"all 0.1s"}}>
+                    <td style={{padding:"10px 16px",fontFamily:"monospace",fontSize:12,color:isSel?color:"#64748b"}}>{c.transcript_id}</td>
+                    <td style={{padding:"10px 16px"}}><Bar value={s?.overall}/></td>
+                    <td style={{padding:"10px 16px"}}><Bar value={s?.chief_complaint}/></td>
+                    <td style={{padding:"10px 16px"}}><Bar value={s?.vitals?.avg}/></td>
+                    <td style={{padding:"10px 16px"}}><Bar value={s?.medications?.f1}/></td>
+                    <td style={{padding:"10px 16px"}}><Bar value={s?.diagnoses?.f1}/></td>
+                    <td style={{padding:"10px 16px"}}><Bar value={s?.plan?.f1}/></td>
+                    <td style={{padding:"10px 16px",color:c.schema_valid?"#22c55e":"#ef4444",fontSize:13}}>{c.schema_valid?"✓":"✗"}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {sel&&(
+          <div style={{marginTop:2,background:"#0a0f1a",border:`1px solid ${color}30`,borderRadius:8,overflow:"hidden"}}>
+            <div style={{padding:"14px 20px",borderBottom:"1px solid #1e293b",display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:10,letterSpacing:2,color,fontWeight:700}}>CASE DETAIL</span>
+              <span style={{fontFamily:"monospace",fontSize:11,color:"#64748b"}}>{sel}</span>
+              <button onClick={()=>setSel(null)} style={{marginLeft:"auto",background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:16}}>×</button>
+            </div>
+            {gold||pred?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}>
+              <div style={{borderRight:"1px solid #1e293b",padding:20}}><div style={{fontSize:10,letterSpacing:2,color:"#22c55e",marginBottom:12,fontWeight:600}}>GOLD STANDARD</div><pre style={{fontSize:11,color:"#94a3b8",overflowX:"auto",maxHeight:320,margin:0,lineHeight:1.6}}>{gold}</pre></div>
+              <div style={{padding:20}}><div style={{fontSize:10,letterSpacing:2,color,marginBottom:12,fontWeight:600}}>PREDICTION</div><pre style={{fontSize:11,color:"#94a3b8",overflowX:"auto",maxHeight:320,margin:0,lineHeight:1.6}}>{pred}</pre></div>
+            </div>:<div style={{padding:40,textAlign:"center",color:"#334155",fontSize:12}}>Loading...</div>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
