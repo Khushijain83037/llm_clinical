@@ -1,33 +1,8 @@
-"use client";
-import Link from "next/link";
-
-import { ModeToggle } from "./mode-toggle";
-import UserMenu from "./user-menu";
-
 export default function Header() {
-  const links = [
-    { to: "/", label: "Home" },
-    { to: "/dashboard", label: "Dashboard" },
-  ] as const;
-
   return (
-    <div>
-      <div className="flex flex-row items-center justify-between px-2 py-1">
-        <nav className="flex gap-4 text-lg">
-          {links.map(({ to, label }) => {
-            return (
-              <Link key={to} href={to}>
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="flex items-center gap-2">
-          <ModeToggle />
-          <UserMenu />
-        </div>
-      </div>
-      <hr />
+    <div style={{borderBottom:"1px solid #0f172a",padding:"12px 32px",display:"flex",alignItems:"center",gap:16,background:"#020817"}}>
+      <div style={{width:6,height:6,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 6px #22c55e"}}/>
+      <span style={{fontSize:10,letterSpacing:3,color:"#334155",fontFamily:"monospace"}}>HEALOSBENCH · CLINICAL EVAL HARNESS</span>
     </div>
   );
 }

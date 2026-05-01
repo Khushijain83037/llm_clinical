@@ -9,7 +9,7 @@ type RunSummary = {
   cost_usd?: number; tokens?: { cost_usd?: number }; wall_ms: number; created_at: string;
 };
 
-const SERVER = "http://70.38.97.86:8800";
+const SERVER = "https://modelapi.devchauhan.com";
 const COLORS: Record<string, string> = { zero_shot: "#3b82f6", few_shot: "#8b5cf6", cot: "#06b6d4" };
 const LABELS: Record<string, string> = { zero_shot: "ZERO SHOT", few_shot: "FEW SHOT", cot: "CHAIN OF THOUGHT" };
 

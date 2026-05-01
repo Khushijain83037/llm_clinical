@@ -2,7 +2,7 @@
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
 export const dynamic = "force-dynamic";
-const SERVER = "http://70.38.97.86:8800";
+const SERVER = "https://modelapi.devchauhan.com";
 type CaseRow = { transcript_id: string; schema_valid: boolean; attempt_count: number; scores?: { overall?: number; chief_complaint?: number; vitals?: { avg?: number }; medications?: { f1?: number }; diagnoses?: { f1?: number }; plan?: { f1?: number } } | null };
 type RunData = { id: string; strategy: string; status: string; prompt_hash: string; completed_cases: number; total_cases: number; cost_usd?: number; tokens?: { cost_usd?: number; cache_read?: number }; wall_ms: number; aggregate_scores?: { overall?: number; chief_complaint?: number; vitals?: { avg?: number }; medications?: { f1?: number; precision?: number; recall?: number }; diagnoses?: { f1?: number; precision?: number; recall?: number }; plan?: { f1?: number; precision?: number; recall?: number }; follow_up_interval?: number; follow_up_reason?: number } | null; cases?: CaseRow[] };
 const COLORS: Record<string,string> = { zero_shot:"#3b82f6", few_shot:"#8b5cf6", cot:"#06b6d4" };
