@@ -3,96 +3,176 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type RunSummary = {
-  id: string; strategy: string; model: string; status: string;
+  id: string; strategy: string; status: string;
   completed_cases: number; total_cases: number; prompt_hash: string;
   aggregate_scores?: { overall?: number; medications?: { f1?: number }; diagnoses?: { f1?: number }; plan?: { f1?: number } } | null;
   cost_usd?: number; tokens?: { cost_usd?: number }; wall_ms: number; created_at: string;
 };
 
 const SERVER = "https://modelapi.devchauhan.com";
-const COLORS: Record<string, string> = { zero_shot: "#3b82f6", few_shot: "#8b5cf6", cot: "#06b6d4" };
-const LABELS: Record<string, string> = { zero_shot: "ZERO SHOT", few_shot: "FEW SHOT", cot: "CHAIN OF THOUGHT" };
 
-function pct(n: number | null | undefined) { if (n == null) return "—"; return `${(n * 100).toFixed(1)}%`; }
-function f1Bar(n: number | null | undefined) {
-  if (n == null) return <span style={{color:"#334155"}}>—</span>;
-  const c = n >= 0.8 ? "#22c55e" : n >= 0.6 ? "#f59e0b" : "#ef4444";
-  return <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:60,height:4,background:"#1e293b",borderRadius:2}}><div style={{width:`${Math.round(n*100)}%`,height:"100%",background:c,borderRadius:2}}/></div><span style={{color:c,fontFamily:"monospace",fontSize:13,fontWeight:600}}>{pct(n)}</span></div>;
+function pct(n: number | null | undefined) {
+  if (n == null) return "—";
+  return `${(n * 100).toFixed(1)}`;
 }
+
+function ScorePill({ value }: { value: number | null | undefined }) {
+  if (value == null) return <span style={{ color: "#9ca3af", fontSize: 13 }}>—</span>;
+  const v = value * 100;
+  const color = v >= 80 ? "#059669" : v >= 60 ? "#d97706" : "#dc2626";
+  return <span style={{ color, fontFamily: "monospace", fontSize: 13, fontWeight: 600 }}>{pct(value)}%</span>;
+}
+
+const STRAT: Record<string, { label: string; color: string; dot: string }> = {
+  zero_shot: { label: "Zero Shot", color: "#1d4ed8", dot: "#3b82f6" },
+  few_shot: { label: "Few Shot", color: "#6d28d9", dot: "#8b5cf6" },
+  cot: { label: "Chain of Thought", color: "#0e7490", dot: "#06b6d4" },
+};
 
 export default function RunsPage() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
-  const [strategy, setStrategy] = useState<"zero_shot"|"few_shot"|"cot">("zero_shot");
+  const [strategy, setStrategy] = useState<"zero_shot" | "few_shot" | "cot">("few_shot");
   const [selected, setSelected] = useState<string[]>([]);
-  const load = () => fetch(`${SERVER}/api/v1/runs`).then(r=>r.json()).then(setRuns).finally(()=>setLoading(false));
-  useEffect(()=>{load();},[]);
-  const startRun = async () => { setStarting(true); await fetch(`${SERVER}/api/v1/runs`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({strategy})}); await load(); setStarting(false); };
-  const toggle = (id: string) => setSelected(s => s.includes(id) ? s.filter(x=>x!==id) : [...s.slice(-1),id]);
+
+  const load = () => fetch(`${SERVER}/api/v1/runs`).then(r => r.json()).then(setRuns).catch(console.error).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
+
+  const startRun = async () => {
+    setStarting(true);
+    await fetch(`${SERVER}/api/v1/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ strategy }) });
+    await load();
+    setStarting(false);
+  };
+
+  const toggle = (id: string) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s.slice(-1), id]);
   const getCost = (r: RunSummary) => r.tokens?.cost_usd ?? r.cost_usd ?? 0;
-  const done = runs.filter(r=>r.status==="completed");
-  const bestF1 = done.length>0 ? Math.max(...done.map(r=>r.aggregate_scores?.overall??0)) : 0;
-  const totalCost = done.reduce((a,r)=>a+getCost(r),0);
+  const done = runs.filter(r => r.status === "completed");
+  const bestF1 = done.length > 0 ? Math.max(...done.map(r => r.aggregate_scores?.overall ?? 0)) : 0;
+  const totalCost = done.reduce((a, r) => a + getCost(r), 0);
 
   return (
-    <div style={{minHeight:"100vh",background:"#020817",color:"#e2e8f0",fontFamily:"'DM Mono','Fira Code',monospace"}}>
-      <div style={{borderBottom:"1px solid #0f172a",padding:"20px 32px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:16}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 8px #22c55e"}}/>
-          <span style={{fontSize:11,letterSpacing:3,color:"#64748b",textTransform:"uppercase"}}>HEALOSBENCH</span>
-          <span style={{color:"#1e293b"}}>|</span>
-          <span style={{fontSize:11,letterSpacing:2,color:"#334155",textTransform:"uppercase"}}>Clinical Extraction Eval Harness</span>
-        </div>
-        <div style={{display:"flex",gap:24,fontSize:11,color:"#475569"}}>
-          <span>Model: <span style={{color:"#94a3b8"}}>claude-haiku-4-5</span></span>
-          <span>Cases: <span style={{color:"#94a3b8"}}>50</span></span>
+    <div style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <style>{`* { box-sizing: border-box; } body { margin: 0; } tr.datarow:hover td { background: #f8fafc; }`}</style>
+
+      {/* Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb" }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 32px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect width="20" height="20" rx="5" fill="#111827"/>
+              <path d="M5 10h10M10 5v10" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#111827", letterSpacing: -0.3 }}>HealOS Bench</span>
+            <span style={{ color: "#e5e7eb" }}>·</span>
+            <span style={{ fontSize: 13, color: "#6b7280" }}>Clinical Extraction Evaluator</span>
+          </div>
+          <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#9ca3af" }}>
+            <span style={{ fontFamily: "monospace" }}>claude-haiku-4-5</span>
+            <span>50 transcripts</span>
+          </div>
         </div>
       </div>
-      <div style={{padding:"32px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:32}}>
-          {[{label:"TOTAL RUNS",value:runs.length.toString(),sub:`${done.length} completed`},{label:"BEST F1",value:bestF1>0?pct(bestF1):"—",sub:"across all strategies",accent:"#22c55e"},{label:"TOTAL SPEND",value:totalCost>0?`$${totalCost.toFixed(3)}`:"$0.00",sub:"all strategies",accent:"#f59e0b"},{label:"STRATEGIES",value:"3",sub:"zero_shot · few_shot · cot"}].map(card=>(
-            <div key={card.label} style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:8,padding:"20px 24px"}}>
-              <div style={{fontSize:10,letterSpacing:2,color:"#475569",marginBottom:8}}>{card.label}</div>
-              <div style={{fontSize:28,fontWeight:700,color:card.accent??"#e2e8f0",letterSpacing:-1}}>{card.value}</div>
-              <div style={{fontSize:11,color:"#334155",marginTop:4}}>{card.sub}</div>
+
+      <div style={{ maxWidth: 1080, margin: "0 auto", padding: "28px 32px" }}>
+
+        {/* Metrics */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
+          {[
+            { label: "Runs", value: String(runs.length), sub: `${done.length} completed` },
+            { label: "Best F1", value: bestF1 > 0 ? `${pct(bestF1)}%` : "—", sub: "few_shot", accent: "#059669" },
+            { label: "Total Cost", value: totalCost > 0 ? `$${totalCost.toFixed(3)}` : "$0.00", sub: "3 strategies" },
+            { label: "Strategies", value: "3", sub: "zero · few · cot" },
+          ].map(c => (
+            <div key={c.label} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "18px 20px" }}>
+              <div style={{ fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>{c.label}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: c.accent ?? "#111827", letterSpacing: -0.5, lineHeight: 1 }}>{c.value}</div>
+              <div style={{ fontSize: 11, color: "#d1d5db", marginTop: 5 }}>{c.sub}</div>
             </div>
           ))}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
-          <div style={{display:"flex",background:"#0f172a",border:"1px solid #1e293b",borderRadius:6,overflow:"hidden"}}>
-            {(["zero_shot","few_shot","cot"] as const).map(s=>(
-              <button key={s} onClick={()=>setStrategy(s)} style={{padding:"8px 16px",background:strategy===s?COLORS[s]+"20":"transparent",color:strategy===s?COLORS[s]:"#475569",fontSize:11,fontFamily:"inherit",fontWeight:strategy===s?700:400,letterSpacing:1,cursor:"pointer",border:"none",borderRight:"1px solid #1e293b",transition:"all 0.15s"}}>{LABELS[s]}</button>
+
+        {/* Controls */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+            {(["zero_shot", "few_shot", "cot"] as const).map((s, i, arr) => (
+              <button key={s} onClick={() => setStrategy(s)} style={{ padding: "7px 14px", background: strategy === s ? "#111827" : "transparent", color: strategy === s ? "#fff" : "#374151", fontSize: 12, fontWeight: strategy === s ? 600 : 400, cursor: "pointer", border: "none", borderRight: i < arr.length - 1 ? "1px solid #e5e7eb" : "none", transition: "all 0.12s" }}>
+                {STRAT[s].label}
+              </button>
             ))}
           </div>
-          <button onClick={startRun} disabled={starting} style={{padding:"8px 20px",background:starting?"#1e293b":"#3b82f6",color:starting?"#475569":"#fff",border:"none",borderRadius:6,fontSize:11,fontFamily:"inherit",fontWeight:700,letterSpacing:1,cursor:starting?"not-allowed":"pointer"}}>{starting?"STARTING...":"▶ START RUN"}</button>
-          {selected.length===2&&<Link href={`/compare?a=${selected[0]}&b=${selected[1]}`} style={{padding:"8px 20px",background:"#7c3aed20",color:"#8b5cf6",border:"1px solid #7c3aed40",borderRadius:6,fontSize:11,fontFamily:"inherit",fontWeight:700,letterSpacing:1,textDecoration:"none"}}>⚡ COMPARE</Link>}
-          <span style={{fontSize:11,color:"#334155",marginLeft:"auto"}}>{selected.length>0?`${selected.length}/2 selected`:"Select 2 runs to compare"}</span>
+          <button onClick={startRun} disabled={starting} style={{ padding: "7px 16px", background: starting ? "#f3f4f6" : "#111827", color: starting ? "#9ca3af" : "#fff", border: "1px solid transparent", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: starting ? "not-allowed" : "pointer" }}>
+            {starting ? "Starting…" : "▶ Run"}
+          </button>
+          {selected.length === 2 && (
+            <Link href={`/compare?a=${selected[0]}&b=${selected[1]}`} style={{ padding: "7px 14px", background: "#faf5ff", color: "#7c3aed", border: "1px solid #e9d5ff", borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+              Compare
+            </Link>
+          )}
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>{selected.length}/2 selected for compare</span>
         </div>
-        <div style={{background:"#0a0f1a",border:"1px solid #1e293b",borderRadius:8,overflow:"hidden"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:"1px solid #1e293b"}}>{["","STRATEGY","STATUS","PROGRESS","OVERALL F1","MEDS F1","DX F1","PLAN F1","COST","TIME","HASH"].map(h=><th key={h} style={{padding:"12px 16px",textAlign:"left",fontSize:10,letterSpacing:2,color:"#334155",fontWeight:600}}>{h}</th>)}</tr></thead>
+
+        {/* Table */}
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #f3f4f6", background: "#fafafa" }}>
+                {["", "Strategy", "Status", "Cases", "Overall", "Meds", "Diagnoses", "Plan", "Cost", "Time"].map(h => (
+                  <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontSize: 11, color: "#6b7280", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.4, whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {loading?<tr><td colSpan={11} style={{padding:40,textAlign:"center",color:"#334155",fontSize:12}}>Loading...</td></tr>:
-               runs.length===0?<tr><td colSpan={11} style={{padding:40,textAlign:"center",color:"#334155",fontSize:12}}>No runs yet. Start your first evaluation above.</td></tr>:
-               runs.map((r,i)=>{
-                const c=COLORS[r.strategy]??"#64748b";
-                const isSel=selected.includes(r.id);
-                const statusC=r.status==="completed"?"#22c55e":r.status==="running"?"#3b82f6":r.status==="failed"?"#ef4444":"#f59e0b";
-                return <tr key={r.id} style={{borderBottom:"1px solid #0f172a",background:isSel?"#1e293b40":i%2===0?"transparent":"#0f172a20"}}>
-                  <td style={{padding:"14px 16px"}}><input type="checkbox" checked={isSel} onChange={()=>toggle(r.id)} style={{accentColor:"#3b82f6",cursor:"pointer"}}/></td>
-                  <td style={{padding:"14px 16px"}}><Link href={`/runs/${r.id}`} style={{textDecoration:"none"}}><span style={{fontSize:11,fontWeight:700,letterSpacing:1,color:c,background:c+"15",padding:"3px 8px",borderRadius:4,border:`1px solid ${c}30`}}>{LABELS[r.strategy]??r.strategy.toUpperCase()}</span></Link></td>
-                  <td style={{padding:"14px 16px"}}><span style={{fontSize:10,fontWeight:700,letterSpacing:1,padding:"2px 8px",borderRadius:4,background:statusC+"15",color:statusC,border:`1px solid ${statusC}30`}}>{r.status.toUpperCase()}</span></td>
-                  <td style={{padding:"14px 16px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:48,height:3,background:"#1e293b",borderRadius:2}}><div style={{width:`${(r.completed_cases/(r.total_cases||50))*100}%`,height:"100%",background:c,borderRadius:2}}/></div><span style={{fontSize:11,color:"#64748b"}}>{r.completed_cases}/{r.total_cases}</span></div></td>
-                  <td style={{padding:"14px 16px"}}>{f1Bar(r.aggregate_scores?.overall)}</td>
-                  <td style={{padding:"14px 16px"}}>{f1Bar(r.aggregate_scores?.medications?.f1)}</td>
-                  <td style={{padding:"14px 16px"}}>{f1Bar(r.aggregate_scores?.diagnoses?.f1)}</td>
-                  <td style={{padding:"14px 16px"}}>{f1Bar(r.aggregate_scores?.plan?.f1)}</td>
-                  <td style={{padding:"14px 16px",fontFamily:"monospace",fontSize:12,color:"#f59e0b"}}>${getCost(r).toFixed(4)}</td>
-                  <td style={{padding:"14px 16px",fontFamily:"monospace",fontSize:12,color:"#64748b"}}>{(r.wall_ms/1000).toFixed(1)}s</td>
-                  <td style={{padding:"14px 16px",fontFamily:"monospace",fontSize:10,color:"#1e3a5f"}}>{r.prompt_hash}</td>
-                </tr>;
-               })}
+              {loading ? (
+                <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>Loading runs...</td></tr>
+              ) : runs.length === 0 ? (
+                <tr><td colSpan={10} style={{ padding: 56, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+                  No runs yet.<br /><span style={{ fontSize: 12, color: "#d1d5db" }}>Select a strategy above and click Run to start.</span>
+                </td></tr>
+              ) : runs.map((r, i) => {
+                const s = STRAT[r.strategy] ?? { label: r.strategy, color: "#374151", dot: "#9ca3af" };
+                const isSel = selected.includes(r.id);
+                const sc = r.status === "completed" ? { bg: "#f0fdf4", tx: "#166534", bd: "#bbf7d0" }
+                  : r.status === "running" ? { bg: "#eff6ff", tx: "#1e40af", bd: "#bfdbfe" }
+                  : r.status === "failed" ? { bg: "#fef2f2", tx: "#991b1b", bd: "#fecaca" }
+                  : { bg: "#fffbeb", tx: "#92400e", bd: "#fde68a" };
+                return (
+                  <tr key={r.id} className="datarow" style={{ borderBottom: i < runs.length - 1 ? "1px solid #f3f4f6" : "none", background: isSel ? "#faf5ff" : "#fff" }}>
+                    <td style={{ padding: "12px 14px" }}>
+                      <input type="checkbox" checked={isSel} onChange={() => toggle(r.id)} style={{ cursor: "pointer", accentColor: "#7c3aed", width: 14, height: 14 }} />
+                    </td>
+                    <td style={{ padding: "12px 14px" }}>
+                      <Link href={`/runs/${r.id}`} style={{ textDecoration: "none" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.dot, flexShrink: 0 }} />
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: s.color }}>{s.label}</div>
+                            <div style={{ fontSize: 10, color: "#d1d5db", fontFamily: "monospace" }}>{r.prompt_hash}</div>
+                          </div>
+                        </div>
+                      </Link>
+                    </td>
+                    <td style={{ padding: "12px 14px" }}>
+                      <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 5, background: sc.bg, color: sc.tx, border: `1px solid ${sc.bd}` }}>{r.status}</span>
+                    </td>
+                    <td style={{ padding: "12px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <div style={{ width: 44, height: 3, background: "#f3f4f6", borderRadius: 2 }}>
+                          <div style={{ width: `${(r.completed_cases / (r.total_cases || 50)) * 100}%`, height: "100%", background: s.dot, borderRadius: 2 }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: "#9ca3af", fontFamily: "monospace" }}>{r.completed_cases}/{r.total_cases}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: "12px 14px" }}><ScorePill value={r.aggregate_scores?.overall} /></td>
+                    <td style={{ padding: "12px 14px" }}><ScorePill value={r.aggregate_scores?.medications?.f1} /></td>
+                    <td style={{ padding: "12px 14px" }}><ScorePill value={r.aggregate_scores?.diagnoses?.f1} /></td>
+                    <td style={{ padding: "12px 14px" }}><ScorePill value={r.aggregate_scores?.plan?.f1} /></td>
+                    <td style={{ padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "#374151" }}>${getCost(r).toFixed(4)}</td>
+                    <td style={{ padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "#9ca3af" }}>{(r.wall_ms / 1000).toFixed(1)}s</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
