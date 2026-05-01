@@ -38,8 +38,12 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "@test-evals/env": "workspace:*",
     "dotenv": "catalog:",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.16",
+    "pg": "^8.20.0",
     "zod": "catalog:"
   },
   "devDependencies": {

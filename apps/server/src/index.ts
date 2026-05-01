@@ -44,3 +44,10 @@ app.get("/api/v1/dataset", (c) => {
 });
 
 export default app;
+
+// Start server
+Bun.serve({
+  port: 8800,
+  fetch: app.fetch,
+});
+console.log("Server running on http://0.0.0.0:8800");

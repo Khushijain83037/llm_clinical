@@ -116,7 +116,7 @@ export async function extract(
         });
         break;
       } else {
-        validationErrors = parsed.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`);
+        validationErrors = parsed.error.issues.map((e) => `${e.path.join(".")}: ${e.message}`);
       }
     } else {
       validationErrors = ["No tool_use block in response — model did not call extract_clinical_data"];
@@ -133,10 +133,19 @@ export async function extract(
     if (attempt < MAX_ATTEMPTS) {
       // Add assistant turn + user correction
       messages.push({ role: "assistant", content: response.content });
-      messages.push({
-        role: "user",
-        content: `Your extraction failed schema validation. Errors:\n${validationErrors.join("\n")}\n\nPlease fix these issues and call extract_clinical_data again with corrected data.`,
-      });
+      // Must include tool_result for every tool_use block
+      const toolUseBlock = response.content.find((b) => b.type === "tool_use");
+      const toolResultContent = toolUseBlock
+        ? [
+            {
+              type: "tool_result" as const,
+              tool_use_id: (toolUseBlock as { id: string }).id,
+              content: `Validation failed. Errors:\n${validationErrors.join("\n")}\n\nPlease fix and call extract_clinical_data again.`,
+              is_error: true,
+            },
+          ]
+        : [{ type: "text" as const, text: `Validation failed. Errors:\n${validationErrors.join("\n")}\n\nPlease call extract_clinical_data again with corrected data.` }];
+      messages.push({ role: "user", content: toolResultContent });
     }
   }
 

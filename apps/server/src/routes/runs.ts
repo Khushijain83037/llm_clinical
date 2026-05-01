@@ -3,7 +3,7 @@ import { stream } from "hono/streaming";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@test-evals/db";
-import { runs, caseResults } from "@test-evals/db/schema";
+import { runs, caseResults } from "../../../../packages/db/src/schema/index.js";
 import { startRun, resumeRun, getRuns, getRun, subscribe } from "../services/runner.service.js";
 import { loadDataset, getCase } from "../services/dataset.service.js";
 import type { PromptStrategy } from "@test-evals/shared";

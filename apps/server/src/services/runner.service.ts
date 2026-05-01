@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
 import { db } from "@test-evals/db";
-import { runs, caseResults } from "@test-evals/db/schema";
+import { runs, caseResults } from "../../../../packages/db/src/schema/index.js";
 import { extract } from "@test-evals/llm";
 import type { PromptStrategy, CaseResult, RunSummary, TokenUsage } from "@test-evals/shared";
 import { evaluate, aggregateScores } from "./evaluate.service.js";

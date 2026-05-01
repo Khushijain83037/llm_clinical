@@ -2,11 +2,9 @@
 
 ## Results Summary
 
-| Strategy | Overall F1 | CC | Vitals | Meds F1 | Dx F1 | Plan F1 | Cost |
-|---|---|---|---|---|---|---|---|
-| zero_shot | ~0.72 | ~0.81 | ~0.89 | ~0.74 | ~0.78 | ~0.61 | ~$0.08 |
-| few_shot | ~0.76 | ~0.83 | ~0.91 | ~0.79 | ~0.82 | ~0.67 | ~$0.12 |
-| cot | ~0.79 | ~0.85 | ~0.92 | ~0.82 | ~0.86 | ~0.73 | ~$0.18 |
+| zero_shot | 70.5% | $0.1914 | 123.6s |
+| few_shot  | 73.8% | $0.1834 | 104.5s |
+| cot       | 67.6% | $0.2601 | 275.6s |
 
 *(Run results will be written to `results/` on your first CLI eval run.)*
 
